@@ -39,6 +39,16 @@ def main() -> None:
     # outputs / performance
     p_mine.add_argument("--progress-every", type=int, default=200, help="Print progress every N PDBs.")
     p_mine.add_argument("--max-pdbs", type=int, default=None, help="Optional: process only first N PDBs (debug).")
+    p_mine.add_argument("--detailed-results", action="store_true", help="Also write explainable site records and processing diagnostics; existing CSVs are unchanged.")
+
+    p_export = sub.add_parser("export-pymol", help="Export one recorded legacy filter match as a portable PyMOL bundle.")
+    p_export.add_argument("--results", required=True, help="site_matches_*.jsonl from mine --detailed-results")
+    p_export.add_argument("--site-id", required=True, help="Exact site_id from the detailed results")
+    p_export.add_argument("--outdir", required=True, help="New or empty bundle directory")
+    p_export.add_argument("--structure", help="Override source path, with identical SHA-256 required")
+    p_export.add_argument("--context-radius", type=float, default=8.0, help="Display neighborhood in Angstrom; does not change filters")
+    p_export.add_argument("--save-session", action="store_true", help="Have PyMOL save site.pse when the script is run")
+    p_export.add_argument("--png", action="store_true", help="Have PyMOL render closeup.png when the script is run")
 
     # ---------------- annotate ----------------
     p_ann = sub.add_parser("annotate", help="Merge mined hits with UniProt idmapping.fasta and apply keyword filtering.")
@@ -63,3 +73,11 @@ def main() -> None:
         run_mine(args)
     elif args.command == "annotate":
         run_annotate(args)
+    elif args.command == "export-pymol":
+        from .pymol_export import export_bundle
+        try:
+            bundle = export_bundle(args.results, args.site_id, args.outdir, args.structure,
+                                   args.context_radius, args.save_session, args.png)
+        except (ValueError, OSError) as exc:
+            parser.error(str(exc))
+        print(f"Wrote {bundle}; run PyMOL from that directory: pymol view.pml")

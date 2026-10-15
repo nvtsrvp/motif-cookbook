@@ -3,7 +3,7 @@
 This Python package contains the code for the discovery of new radical halogenases presented in the following manuscript:
 
 "Targeted Enzyme Discovery using Metal-Coordination Mining"
-"  
+"
 Ioannis Kipouros and Michelle Chang
 
 ---
@@ -49,17 +49,17 @@ For each His pair, the algorithm:
 
 ### Facial Triad Sites (2-His-1-Asp/Glu)
 
-(min(closest_ASP, closest_GLU) <= cutoff)  
-AND protein_length > threshold  
+(min(closest_ASP, closest_GLU) <= cutoff)
+AND protein_length > threshold
 
 ### Putative Radical Halogenase Sites
 
-closest_ASP > acid_exclude_cutoff  
-closest_GLU > acid_exclude_cutoff  
-other ligand distances > exclude_ligand_cutoff  
-ALA or GLY within ala_gly_presence_cutoff  
-(optional) HX residue allowed  
-protein_length > threshold  
+closest_ASP > acid_exclude_cutoff
+closest_GLU > acid_exclude_cutoff
+other ligand distances > exclude_ligand_cutoff
+ALA or GLY within ala_gly_presence_cutoff
+(optional) HX residue allowed
+protein_length > threshold
 
 All thresholds are adjustable via CLI arguments.
 
@@ -69,17 +69,23 @@ All thresholds are adjustable via CLI arguments.
 
 Clone the repository:
 
-git clone <your_repo_url>  
-cd hal_discovery_pkg  
+git clone <your_repo_url>
+cd hal_discovery_pkg
 
 Create virtual environment:
 
-python3 -m venv .venv  
-source .venv/bin/activate  
+python3 -m venv .venv
+source .venv/bin/activate
 
 Install in editable mode:
 
-pip install -e .  
+pip install -e .
+
+## Jupyter
+
+pip install pandas numpy matplotlib requests biopython jupyter
+jupyter notebook jupyter-notebook/SupplementaryCode1_JupyterNotebook_Kipouros.ipynb
+(make sure Jupyter launches using your venv's own kernel: Kernel > Change Kernel > Pick motif-cookbook (.venv) from the list)
 
 ---
 
@@ -87,8 +93,8 @@ pip install -e .
 
 Two commands are provided:
 
-hal-discovery mine  
-hal-discovery annotate  
+hal-discovery mine
+hal-discovery annotate
 
 ---
 
@@ -96,12 +102,12 @@ hal-discovery annotate
 
 ## Input
 
-Directory containing PDB files.  
+Directory containing PDB files.
 Each file must be named with UniProt accession:
 
 Example:
-Q9RBY6.pdb  
-A0A014N2U3.pdb  
+Q9RBY6.pdb
+A0A014N2U3.pdb
 
 ---
 
@@ -117,35 +123,35 @@ hal-discovery mine \
 
 HIS geometry:
 
---his-ne2-cutoff 4.0  
---his-hbond-cutoff 4.0  
+--his-ne2-cutoff 4.0
+--his-hbond-cutoff 4.0
 
 Facial triad:
 
---asp-glu-cutoff 5.0  
---triad-min-length 0  
+--asp-glu-cutoff 5.0
+--triad-min-length 0
 
 Halogenase-like filter:
 
---min-length 200  
---acid-exclude-cutoff 5.5  
---exclude-ligand-cutoff 4.0  
---ala-gly-presence-cutoff 7.0  
---require-hx (default ON)  
---no-require-hx  
---hx-offset 2  
---hx-allowed ALA GLY  
+--min-length 200
+--acid-exclude-cutoff 5.5
+--exclude-ligand-cutoff 4.0
+--ala-gly-presence-cutoff 7.0
+--require-hx (default ON)
+--no-require-hx
+--hx-offset 2
+--hx-allowed ALA GLY
 
 ---
 
 ## Mining Outputs
 
-2his_sites_all_TIMESTAMP.csv  
-facial_triad_sites_TIMESTAMP.csv  
-putative_halogenases_TIMESTAMP.csv  
-putative_halogenase_accessions_TIMESTAMP.txt  
-no_pairs_TIMESTAMP.txt  
-summary_TIMESTAMP.json  
+2his_sites_all_TIMESTAMP.csv
+facial_triad_sites_TIMESTAMP.csv
+putative_halogenases_TIMESTAMP.csv
+putative_halogenase_accessions_TIMESTAMP.txt
+no_pairs_TIMESTAMP.txt
+summary_TIMESTAMP.json
 
 Example summary:
 
@@ -198,16 +204,16 @@ The demo dataset should produce:
 
 The 10 identified radical halogenases (positive controls) are:
 
-SyrB2 (Q9RBY6)  
-CytC3 (D0VX22)  
-OocP (K7WEY7)  
-Arzl (A0A3B8GZ79)  
-BesD (G8XHD5)  
-HalD (A0A0F4XRB2)  
-WelO5 (A0A067YX61)  
-AdeV (A0A1U8X168)  
-DAH (A0A6M3RHU8)  
-BtnX (A8LT50)  
+SyrB2 (Q9RBY6)
+CytC3 (D0VX22)
+OocP (K7WEY7)
+Arzl (A0A3B8GZ79)
+BesD (G8XHD5)
+HalD (A0A0F4XRB2)
+WelO5 (A0A067YX61)
+AdeV (A0A1U8X168)
+DAH (A0A6M3RHU8)
+BtnX (A8LT50)
 
 The demo verifies that the mining logic correctly identifies known radical halogenases while excluding negative controls.
 
@@ -221,14 +227,14 @@ This step merges structural hits with UniProt metadata.
 
 A FASTA file generated using the UniProt ID mapping tool from the putative halogenase accession list:
 
-idmapping.fasta  
+idmapping.fasta
 
 The accession list can be generated from:
 
-putative_halogenase_accessions_TIMESTAMP.txt  
+putative_halogenase_accessions_TIMESTAMP.txt
 
-Use the UniProt Retrieve/ID Mapping tool:  
-https://www.uniprot.org/id-mapping  
+Use the UniProt Retrieve/ID Mapping tool:
+https://www.uniprot.org/id-mapping
 
 ---
 
@@ -245,33 +251,33 @@ hal-discovery annotate \
 
 Entries containing any of the following keywords are removed:
 
-transcription  
-regulator  
-AraC  
-globin  
-Alkb  
-glutelin  
-TehB  
-tet  
-fragment  
-chemotaxis  
-helix-turn-helix  
-tellurite  
-adenosyl  
-SAM  
-Ferredoxin  
+transcription
+regulator
+AraC
+globin
+Alkb
+glutelin
+TehB
+tet
+fragment
+chemotaxis
+helix-turn-helix
+tellurite
+adenosyl
+SAM
+Ferredoxin
 
 Override with:
 
---exclude-keywords keyword1 keyword2 keyword3  
+--exclude-keywords keyword1 keyword2 keyword3
 
 ---
 
 ## Annotation Outputs
 
-putativeHals_annotated_and_filtered_TIMESTAMP.csv  
-putativeHals_annotated_and_filtered_IDsONLY_TIMESTAMP.csv  
-summary_annotate_TIMESTAMP.json  
+putativeHals_annotated_and_filtered_TIMESTAMP.csv
+putativeHals_annotated_and_filtered_IDsONLY_TIMESTAMP.csv
+summary_annotate_TIMESTAMP.json
 
 ---
 
@@ -314,17 +320,17 @@ If you use this software in published work, please cite:
 
 # Author
 
-Ioannis (Yanni) Kipouros  
-Princeton University  
-Department of Chemistry  
+Ioannis (Yanni) Kipouros
+Princeton University
+Department of Chemistry
 
 ---
 
 # License
 
-MIT License  
+MIT License
 
-Copyright (c) 2026 Ioannis Kipouros  
+Copyright (c) 2026 Ioannis Kipouros
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -343,3 +349,26 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## Explain existing matches in PyMOL (Milestone 1)
+
+Run `hal-discovery mine --pdb-dir demo/demo_dataset --outdir results --detailed-results`
+for optional explainable JSONL records alongside the unchanged CSV outputs.
+Select a recorded `site_id`, then export it with:
+
+```sh
+hal-discovery export-pymol --results results/site_matches_TIMESTAMP.jsonl --site-id SITE_ID --outdir site_bundle
+cd site_bundle
+pymol view.pml
+```
+
+The bundle includes the input structure, exact atom identities, criteria and measurements,
+and a reproducible PyMOL script. PyMOL is needed to view it, but is not needed to filter
+or export. Optional `--save-session` and `--png` produce outputs when PyMOL runs.
+The midpoint is labeled a computed geometric reference point, not a metal prediction.
+
+See [workflow and record format](docs/milestone-1.md) and
+[background, sources, and inspected implementation limitations](docs/background-and-sources.md).
+In particular, the existing `--ala-gly-cutoff` option is unused, and original summary
+JSON files do not record parameters; the new detailed records do. Existing filters
+remain unchanged. Copper/BURP filtering is deferred to Milestone 2.

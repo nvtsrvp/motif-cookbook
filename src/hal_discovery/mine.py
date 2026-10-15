@@ -116,7 +116,7 @@ def _get_hx_resname(structure, chain_id: str, resseq: int, hx_offset: int) -> st
     return "NA"
 
 
-def find_closest_residues(structure, his_pairs, his_ne2, protein_length, pdb_path, hx_offset: int):
+def find_closest_residues(structure, his_pairs, his_ne2, protein_length, pdb_path, hx_offset: int, details=None):
     """
     For each HIS pair:
       - compute midpoint between NE2 atoms
@@ -138,6 +138,7 @@ def find_closest_residues(structure, his_pairs, his_ne2, protein_length, pdb_pat
 
         # IMPORTANT: reset per pair (your earlier bug cause)
         closest = {res: float("inf") for res in RES_TYPES}
+        witnesses = {}
 
         # HX residue (optional use later; we still compute it)
         hx_res = _get_hx_resname(structure, chainA, resiA, hx_offset=hx_offset)
@@ -158,6 +159,7 @@ def find_closest_residues(structure, his_pairs, his_ne2, protein_length, pdb_pat
                             d = euclidean_distance(midpoint, residue[atom_name].get_coord())
                             if d < closest[resname]:
                                 closest[resname] = d
+                                witnesses[resname] = residue[atom_name]
 
         # convert inf -> blank for writing CSV, but keep numeric for filtering
         row = {
@@ -173,14 +175,26 @@ def find_closest_residues(structure, his_pairs, his_ne2, protein_length, pdb_pat
             row[f"closest_{res}"] = None if closest[res] == float("inf") else float(closest[res])
 
         rows.append(row)
+        if details is not None:
+            from .results import capture_site
+            details.append(capture_site(structure, pair, midpoint, witnesses, row, pdb_path))
 
     return rows
 
 
-def main_function(pdb_path: str, cutoff_ne2: float, cutoff_hbond: float, hx_offset: int) -> List[Dict[str, Any]]:
+def main_function(pdb_path: str, cutoff_ne2: float, cutoff_hbond: float, hx_offset: int, details=None, diagnostics=None) -> List[Dict[str, Any]]:
     """Parse PDB, find His pairs, compute distances and context features."""
     parser = PDBParser(QUIET=True)
     structure = parser.get_structure("pdb", pdb_path)
+    if diagnostics is not None:
+        for residue in structure.get_residues():
+            if residue.get_resname() == "HIS":
+                missing = [name for name in ("NE2", "N", "O") if name not in residue]
+                if missing:
+                    diagnostics.append({"source": str(pdb_path), "status": "not_evaluable",
+                                        "reason": "missing_required_his_pair_atoms", "missing_atoms": missing,
+                                        "model_id": residue.get_parent().get_parent().id,
+                                        "chain": residue.get_parent().id, "residue_id": list(residue.id)})
 
     protein_length = len(list(structure.get_residues()))
 
@@ -190,7 +204,7 @@ def main_function(pdb_path: str, cutoff_ne2: float, cutoff_hbond: float, hx_offs
     if not his_pairs:
         return []
 
-    return find_closest_residues(structure, his_pairs, his_ne2, protein_length, pdb_path, hx_offset=hx_offset)
+    return find_closest_residues(structure, his_pairs, his_ne2, protein_length, pdb_path, hx_offset=hx_offset, details=details)
 
 
 # ----------------------- filtering (notebook-like but parameterized) -----------------------
@@ -219,21 +233,30 @@ def run_mine(args) -> None:
 
     all_rows: List[Dict[str, Any]] = []
     no_pairs: List[str] = []
+    detailed = [] if getattr(args, "detailed_results", False) else None
+    failures = []
 
     for i, pdb_path in enumerate(pdb_files, start=1):
         if i == 1 or i % args.progress_every == 0 or i == len(pdb_files):
             print(f"[{i}/{len(pdb_files)}]")
 
         try:
+            file_details = [] if detailed is not None else None
             rows = main_function(
                 str(pdb_path),
                 cutoff_ne2=args.his_ne2_cutoff,
                 cutoff_hbond=args.his_hbond_cutoff,
                 hx_offset=args.hx_offset,
+                details=file_details,
+                diagnostics=failures if detailed is not None else None,
             )
-        except Exception:
+        except Exception as exc:
             # if a PDB is malformed, skip it
+            failures.append({"source": str(pdb_path), "error": str(exc), "status": "parse_or_processing_error"})
             continue
+
+        if detailed is not None:
+            detailed.extend(file_details)
 
         if not rows:
             no_pairs.append(pdb_path.stem)
@@ -249,9 +272,19 @@ def run_mine(args) -> None:
     out_none = outdir / f"no_pairs_{ts}.txt"
     out_none.write_text("\n".join(no_pairs) + ("\n" if no_pairs else ""))
 
+    extra_summary = {}
+    if detailed is not None:
+        from .results import write_results
+        out_details = outdir / f"site_matches_{ts}.jsonl"
+        write_results(detailed, args, out_details)
+        out_failures = outdir / f"processing_errors_{ts}.json"
+        out_failures.write_text(json.dumps(failures, indent=2) + "\n")
+        extra_summary = {"detailed_sites_jsonl": str(out_details), "processing_errors_json": str(out_failures)}
+
     # If empty, still write summary and exit
     if df_2his.empty:
         summary = {
+            **extra_summary,
             "total_structures": len(pdb_files),
             "total_2his_sites": 0,
             "proteins_with_2his_sites": 0,
@@ -329,6 +362,7 @@ def run_mine(args) -> None:
     n_sites_hals = len(df_hals)
 
     summary = {
+        **extra_summary,
         "total_structures": len(pdb_files),
         "total_2his_sites": int(n_sites_total),
         "proteins_with_2his_sites": int(n_proteins_total),
