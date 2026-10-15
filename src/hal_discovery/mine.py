@@ -1,17 +1,11 @@
 import json
 import datetime as dt
+from math import dist as euclidean_distance
 from pathlib import Path
 from typing import Dict, Tuple, List, Any
 
 import pandas as pd
 from Bio.PDB import PDBParser
-
-
-# ----------------------- geometry utils -----------------------
-
-def euclidean_distance(a, b) -> float:
-    """Euclidean distance between two 3D points (iterables length 3)."""
-    return ((a[0] - b[0])**2 + (a[1] - b[1])**2 + (a[2] - b[2])**2) ** 0.5
 
 
 # ----------------------- HIS pairing (notebook-like) -----------------------
