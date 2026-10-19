@@ -49,6 +49,11 @@ def one_model_structure():
     return structure, model
 
 
+def his_key(number, chain="A", model=0, insertion=" "):
+    """Expected full key for a standard histidine residue."""
+    return (model, chain, (" ", number, insertion))
+
+
 class DistanceTests(unittest.TestCase):
     def test_distance_between_known_points(self):
         self.assertEqual(euclidean_distance((0, 0, 0), (3, 4, 0)), 5)
@@ -59,8 +64,8 @@ class DistanceTests(unittest.TestCase):
 
 class HisPairTests(unittest.TestCase):
     def setUp(self):
-        self.first = ("A", 10)
-        self.second = ("A", 20)
+        self.first = his_key(10)
+        self.second = his_key(20)
         self.ne2 = {self.first: (0, 0, 0), self.second: (3, 0, 0)}
         self.oxygen = {self.first: (0, 0, 0), self.second: (0, 0, 0)}
         self.nitrogen = {self.first: (0, 1, 0), self.second: (0, 1, 0)}
@@ -93,6 +98,13 @@ class HisPairTests(unittest.TestCase):
         self.assertEqual(find_his_pairs(self.ne2, self.oxygen, self.nitrogen,
                                        cutoff_ne2=4, cutoff_hbond=0.5), [])
 
+    def test_complete_histidines_in_different_models_cannot_pair(self):
+        other_model = his_key(20, model=1)
+        ne2 = {self.first: (0, 0, 0), other_model: (2, 0, 0)}
+        oxygen = {self.first: (0, 0, 0), other_model: (0, 0, 0)}
+        nitrogen = {self.first: (0, 1, 0), other_model: (0, 1, 0)}
+        self.assertEqual(find_his_pairs(ne2, oxygen, nitrogen), [])
+
     def test_current_limitation_nan_ne2_distance_can_pass(self):
         # NaN >= cutoff is False, so the early rejection is bypassed.
         self.ne2[self.second] = (float("nan"), 0, 0)
@@ -107,41 +119,84 @@ class CoordinateAndNumberingTests(unittest.TestCase):
         add_residue(model, 10, "HIS", {"NE2": (2, 0, 0)}, chain_id="B")
         add_residue(model, 30, "ALA", {"N": (3, 0, 0)})
         ne2, oxygen, nitrogen = extract_his_coordinates(structure)
-        self.assertEqual(set(ne2), {("A", 10), ("B", 10)})
-        self.assertEqual(ne2[("A", 10)].tolist(), [1, 0, 0])
-        self.assertEqual(ne2[("B", 10)].tolist(), [2, 0, 0])
+        self.assertEqual(set(ne2), {his_key(10), his_key(10, chain="B")})
+        self.assertEqual(ne2[his_key(10)].tolist(), [1, 0, 0])
+        self.assertEqual(ne2[his_key(10, chain="B")].tolist(), [2, 0, 0])
         self.assertEqual(oxygen, {})
         self.assertEqual(nitrogen, {})
 
-    def test_current_limitation_incomplete_models_can_be_combined(self):
+    def test_incomplete_models_are_not_combined(self):
         structure, first_model = one_model_structure()
         add_residue(first_model, 10, "HIS", {"NE2": (0, 0, 0)})
         second_model = Model.Model(1)
         structure.add(second_model)
         add_residue(second_model, 10, "HIS", {"N": (1, 0, 0), "O": (2, 0, 0)})
         ne2, oxygen, nitrogen = extract_his_coordinates(structure)
-        # Neither model has a complete His, but the dictionaries suggest one.
+        # Neither model has a complete His: the pairing inputs must agree.
         common_keys = set(ne2) & set(oxygen) & set(nitrogen)
-        self.assertEqual(common_keys, {("A", 10)})
+        self.assertEqual(common_keys, set())
+        self.assertEqual(find_his_pairs(ne2, oxygen, nitrogen), [])
 
-    def test_current_limitation_insertion_codes_overwrite_same_number(self):
+    def test_insertion_codes_keep_both_residues(self):
         structure, model = one_model_structure()
         add_residue(model, 10, "HIS", {"NE2": (1, 0, 0)})
         add_residue(model, 10, "HIS", {"NE2": (2, 0, 0)}, insertion_code="A")
         ne2, _, _ = extract_his_coordinates(structure)
-        self.assertEqual(len(ne2), 1)
-        self.assertEqual(ne2[("A", 10)].tolist(), [2, 0, 0])
+        self.assertEqual(len(ne2), 2)
+        self.assertEqual(ne2[his_key(10)].tolist(), [1, 0, 0])
+        self.assertEqual(ne2[his_key(10, insertion="A")].tolist(), [2, 0, 0])
 
     def test_hx_uses_author_number_plus_offset_in_the_same_chain(self):
         structure, model = one_model_structure()
         add_residue(model, 12, "GLY", {})
         add_residue(model, 12, "ALA", {}, chain_id="B")
-        self.assertEqual(_get_hx_resname(structure, "A", 10, 2), "GLY")
-        self.assertEqual(_get_hx_resname(structure, "B", 10, 2), "ALA")
-        self.assertEqual(_get_hx_resname(structure, "A", 10, 3), "NA")
+        self.assertEqual(_get_hx_resname(structure, 0, "A", 10, 2), "GLY")
+        self.assertEqual(_get_hx_resname(structure, 0, "B", 10, 2), "ALA")
+        self.assertEqual(_get_hx_resname(structure, 0, "A", 10, 3), "NA")
+
+    def test_hx_lookup_uses_the_selected_model(self):
+        structure, first_model = one_model_structure()
+        add_residue(first_model, 12, "ALA", {})
+        second_model = Model.Model(1)
+        structure.add(second_model)
+        add_residue(second_model, 12, "GLY", {})
+        self.assertEqual(_get_hx_resname(structure, 0, "A", 10, 2), "ALA")
+        self.assertEqual(_get_hx_resname(structure, 1, "A", 10, 2), "GLY")
+
+    def test_missing_hx_does_not_fall_back_to_a_different_model(self):
+        structure, first_model = one_model_structure()
+        add_residue(first_model, 12, "ALA", {})
+        structure.add(Model.Model(1))
+        self.assertEqual(_get_hx_resname(structure, 1, "A", 10, 2), "NA")
 
 
 class NeighborhoodTests(unittest.TestCase):
+    def test_other_models_cannot_supply_neighbor_atoms(self):
+        structure, first_model = one_model_structure()
+        add_residue(first_model, 30, "CYS", {"SG": (5, 0, 0)})
+        second_model = Model.Model(1)
+        structure.add(second_model)
+        add_residue(second_model, 30, "CYS", {"SG": (0, 0, 0)})
+        pair = (his_key(10), his_key(20))
+        ne2 = {pair[0]: (-1, 0, 0), pair[1]: (1, 0, 0)}
+
+        row = find_closest_residues(structure, [pair], ne2, 2, "synthetic.pdb", 2)[0]
+
+        self.assertEqual(row["closest_CYS"], 5)
+        self.assertEqual(row["protein_length"], 1)
+
+    def test_unmatched_insertion_variant_is_not_excluded_as_a_matched_residue(self):
+        structure, model = one_model_structure()
+        add_residue(model, 10, "HIS", {"NE2": (-1, 0, 0)})
+        add_residue(model, 20, "HIS", {"NE2": (1, 0, 0)})
+        add_residue(model, 10, "HIS", {"NE2": (0, 0, 0)}, insertion_code="A")
+        ne2, _, _ = extract_his_coordinates(structure)
+        pair = (his_key(10), his_key(20))
+
+        row = find_closest_residues(structure, [pair], ne2, 3, "synthetic.pdb", 2)[0]
+
+        self.assertEqual(row["closest_HIS"], 0)
+
     def test_minima_reset_for_each_site_and_matched_histidines_are_excluded(self):
         structure, model = one_model_structure()
         add_residue(model, 10, "HIS", {"NE2": (0, 0, 0)})
@@ -150,7 +205,7 @@ class NeighborhoodTests(unittest.TestCase):
         add_residue(model, 40, "HIS", {"NE2": (12, 0, 0)})
         add_residue(model, 50, "CYS", {"SG": (1, 0, 0)})
         ne2, _, _ = extract_his_coordinates(structure)
-        pairs = [(("A", 10), ("A", 20)), (("A", 30), ("A", 40))]
+        pairs = [(his_key(10), his_key(20)), (his_key(30), his_key(40))]
 
         rows = find_closest_residues(structure, pairs, ne2, 5, "synthetic.pdb", 2)
 
@@ -163,7 +218,7 @@ class NeighborhoodTests(unittest.TestCase):
         structure, model = one_model_structure()
         add_residue(model, 30, "CYS", {"CA": (1, 0, 0), "SG": (5, 0, 0)})
         add_residue(model, 40, "CYS", {"SG": (2, 0, 0)}, chain_id="B")
-        pair = (("A", 10), ("A", 20))
+        pair = (his_key(10), his_key(20))
         ne2 = {pair[0]: (-1, 0, 0), pair[1]: (1, 0, 0)}
 
         row = find_closest_residues(structure, [pair], ne2, 2, "synthetic.pdb", 2)[0]

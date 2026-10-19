@@ -9,10 +9,10 @@ from .results import SCHEMA_VERSION, atom_record, sha256
 
 
 def validate_record(record, source):
-    if record.get("schema_version") != SCHEMA_VERSION:
+    if record.get("schema_version") not in {"1.0", SCHEMA_VERSION}:
         raise ValueError("Unsupported site schema version")
     if not record.get("exportable"):
-        raise ValueError("Site has ambiguous legacy identities and cannot be exported exactly")
+        raise ValueError("Site is ambiguous or uses a multi-model source and cannot be exported exactly; see record warnings")
     if sha256(source) != record["source"]["sha256"]:
         raise ValueError("Structure SHA-256 differs from the filter input")
     structure = PDBParser(QUIET=True).get_structure("source", str(source))

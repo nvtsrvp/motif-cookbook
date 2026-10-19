@@ -166,8 +166,33 @@ class MilestoneOne(unittest.TestCase):
         model=copy.deepcopy(structure[0]);model.id=1;model.serial_num=2;structure.add(model)
         writer.set_structure(structure);path=self.directory/'models.pdb';writer.save(str(path))
         details=[];main_function(str(path),4.,4.,2,details)
-        self.assertTrue(details)
+        self.assertEqual(len(details), 2)
         self.assertTrue(all(not r['exportable'] for r in details))
+        explained = [explain_site(r, self.args) for r in details]
+        self.assertEqual(len({r['site_id'] for r in explained}), 2)
+        for record in explained:
+            self.assertEqual({a['model_id'] for a in record['atoms'].values()},
+                             {record['legacy_row']['model_id']})
+            self.assertEqual(record['hx']['model_id'], record['legacy_row']['model_id'])
+            self.assertEqual(record['legacy_row']['protein_length'], self.example['legacy_row']['protein_length'])
+
+    def test_same_number_with_insertion_code_survives_parsing_and_reporting(self):
+        structure=PDBParser(QUIET=True).get_structure('synthetic',str(ROOT/'demo/demo_dataset/Q9RBY6.pdb'))
+        chain=structure[0]['A']
+        residue=chain[235]
+        chain.detach_child(residue.id)
+        residue.id=(' ',116,'A')
+        chain.add(residue)
+        writer=PDBIO();writer.set_structure(structure)
+        path=self.directory/'same_number.pdb';writer.save(str(path))
+        details=[];main_function(str(path),4.,4.,2,details)
+        record=explain_site(next(r for r in details if r['legacy_row']['hisA']==116
+                                and r['legacy_row']['hisB']==116),self.args)
+        self.assertEqual(record['legacy_row']['hisA_insertion_code'],'')
+        self.assertEqual(record['legacy_row']['hisB_insertion_code'],'A')
+        self.assertEqual(record['atoms']['his1_NE2']['insertion_code'],'')
+        self.assertEqual(record['atoms']['his2_NE2']['insertion_code'],'A')
+        validate_record(record,path)
 
     def test_rotation_translation_and_renumbering(self):
         import numpy as np

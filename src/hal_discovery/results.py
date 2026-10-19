@@ -5,8 +5,8 @@ from pathlib import Path
 
 from .mine import euclidean_distance
 
-SCHEMA_VERSION = "1.0"
-FILTER_VERSION = "legacy-0.1.0"
+SCHEMA_VERSION = "1.1"
+FILTER_VERSION = "2his-0.2.0"
 PARAMETERS = (
     "his_ne2_cutoff", "his_hbond_cutoff", "asp_glu_cutoff", "ala_gly_cutoff",
     "require_hx", "hx_offset", "min_length", "acid_exclude_cutoff",
@@ -42,22 +42,26 @@ def capture_site(structure, pair, midpoint, witnesses, row, pdb_path):
     atoms, roles, measurements, warnings = {}, {}, {}, []
     missing_atoms = []
     residues = {}
-    ambiguous = len(structure) != 1
-    for residue in structure.get_residues():
-        key = (residue.get_parent().id, residue.id[1])
-        if key in residues:
-            ambiguous = True
-        residues[key] = residue
-        # GLN OE2 is a legacy optional key, not a standard glutamine atom.
-        missing = [n for n in KEY_ATOMS.get(residue.resname, [])
-                   if n not in residue and not (residue.resname == "GLN" and n == "OE2")]
-        if missing:
-            missing_atoms.append({"model_id": residue.get_parent().get_parent().id,
-                                  "auth_chain_id": key[0], "auth_seq_id": key[1],
-                                  "insertion_code": residue.id[2].strip(),
-                                  "resname": residue.resname, "atom_names": missing})
+    model = structure[pair[0][0]]
+    ambiguous = False
+    for chain in model:
+        for residue in chain:
+            key = (model.id, chain.id, residue.id)
+            if key in residues:
+                ambiguous = True
+            residues[key] = residue
+            # GLN OE2 is a legacy optional key, not a standard glutamine atom.
+            missing = [n for n in KEY_ATOMS.get(residue.resname, [])
+                       if n not in residue and not (residue.resname == "GLN" and n == "OE2")]
+            if missing:
+                missing_atoms.append({"model_id": model.id,
+                                      "auth_chain_id": key[1], "auth_seq_id": key[2][1],
+                                      "insertion_code": residue.id[2].strip(),
+                                      "resname": residue.resname, "atom_names": missing})
     if ambiguous:
-        warnings.append("Legacy chain/number keys are ambiguous across models or residue identities; exact export is disabled.")
+        warnings.append("Duplicate full residue identities; exact export is disabled.")
+    if len(structure) != 1:
+        warnings.append("Filtering and measurements are model-specific; PyMOL export currently requires a single-model source file.")
     if missing_atoms:
         warnings.append("Some legacy key atoms are missing; available-coordinate minima do not establish a complete neighborhood.")
 
@@ -73,7 +77,7 @@ def capture_site(structure, pair, midpoint, witnesses, row, pdb_path):
             if name in residue:
                 retain(residue[name], f"his{i}_{name}")
             else:
-                warnings.append(f"Missing His {key} {name}; legacy keys may have combined incomplete residues.")
+                warnings.append(f"Missing His {key} {name}; exact export is disabled.")
                 ambiguous = True
     for name, ends in {
         "his_ne2_distance": ["his1_NE2", "his2_NE2"],
@@ -97,14 +101,16 @@ def capture_site(structure, pair, midpoint, witnesses, row, pdb_path):
                    "sha256": checksum, "format": "pdb", "structure_id": row["structure"],
                    "identifier_policy": "PDB author identifiers; mmCIF input is not supported by the legacy miner"},
         "legacy_row": row.copy(), "atoms": atoms, "roles": roles,
+        "residue_keys": {"his1": pair[0], "his2": pair[1]},
         "points": {"midpoint": {"coordinates": [float(v) for v in midpoint],
                     "kind": "computed_geometric_reference", "label": "COMPUTED GEOMETRIC REFERENCE POINT",
                     "method": "arithmetic midpoint of matched His NE2 atoms", "endpoints": ["his1_NE2", "his2_NE2"]}},
         "measurements": measurements,
-        "metals": {"observed": [atom_record(a) for a in structure.get_atoms()
+        "metals": {"observed": [atom_record(a) for a in model.get_atoms()
                    if a.element.upper() in {"CU", "FE", "ZN", "MN", "CO", "NI", "MG", "CA", "CD", "NA", "K"}],
                    "hypothetical": [], "interpretation": "Deposited atoms only; midpoint is not a metal prediction."},
-        "missing_atoms": missing_atoms, "warnings": warnings, "exportable": not ambiguous,
+        "missing_atoms": missing_atoms, "warnings": warnings,
+        "exportable": not ambiguous and len(structure) == 1,
     }
 
 
@@ -116,11 +122,10 @@ def explain_site(record, args):
                         "implementation_sha256": {name: sha256(Path(__file__).with_name(name))
                                                   for name in ("mine.py", "results.py", "cli.py")},
                         "altloc_policy": "Biopython selected conformer (legacy behavior)",
-                        "neighborhood_scope": "all chains and models; matched chain/number keys excluded",
+                        "neighborhood_scope": "all chains within the selected model; exact matched residues excluded",
+                        "residue_identity_policy": "model_id, chain_id, full Biopython residue ID",
                         "unused_parameters": ["ala_gly_cutoff"]}
-    identity = [record["source"]["sha256"], record["legacy_row"]["chainA"],
-                record["legacy_row"]["hisA"], record["legacy_row"]["chainB"],
-                record["legacy_row"]["hisB"], FILTER_VERSION, params]
+    identity = [record["source"]["sha256"], record["residue_keys"], FILTER_VERSION, params]
     digest = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()[:16]
     record["site_id"] = f"{record['source']['structure_id']}-{digest}"
     row = record["legacy_row"]
@@ -157,7 +162,8 @@ def explain_site(record, args):
     if args.require_hx:
         hx = criterion("HX_identity", "halogenase_all", row["HXres"], "in", args.hx_allowed)
     # Recover the exact legacy HX target, including its atoms, for display.
-    record["hx"] = {"auth_chain_id": row["chainA"], "auth_seq_id": row["hisA"] + args.hx_offset,
+    record["hx"] = {"model_id": row["model_id"], "model_number": row["model_number"],
+                    "auth_chain_id": row["chainA"], "auth_seq_id": row["hisA"] + args.hx_offset,
                     "insertion_code": "", "resname": row["HXres"],
                     "method": "legacy author residue number + offset, not sequence adjacency"}
     record["criteria"] = criteria

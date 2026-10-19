@@ -15,7 +15,8 @@ def extract_his_coordinates(structure):
     Extract coordinates for HIS residues:
       - NE2 (side chain)
       - N and O (backbone)
-    Keys are (chain_id, resseq) to avoid collisions across chains.
+    Keys are (model_id, chain_id, (hetero_flag, resseq, insertion_code)).
+    The hetero flag distinguishes ordinary protein residues (`" "`) from water (`"W"`) and other heteroresidues, such as a ligand (`"H_CU"` for a copper component).
     """
     his_ne2 = {}
     his_o = {}
@@ -23,11 +24,9 @@ def extract_his_coordinates(structure):
 
     for model in structure:
         for chain in model:
-            chain_id = chain.id
             for residue in chain:
                 if residue.get_resname() == "HIS":
-                    resseq = residue.get_id()[1]
-                    key = (chain_id, resseq)
+                    key = (model.id, chain.id, residue.id)
                     # direct lookup is faster/cleaner than looping atoms
                     if "NE2" in residue:
                         his_ne2[key] = residue["NE2"].get_coord()
@@ -42,7 +41,8 @@ def extract_his_coordinates(structure):
 def find_his_pairs(his_ne2, his_o, his_n, cutoff_ne2=4.0, cutoff_hbond=4.0):
     """
     Find pairs of HIS residues using your original geometric criteria.
-    Pairs are returned as list of ((chain, resi), (chain, resi)).
+    Pairs contain full residue keys and never cross models. Different chains
+    in the same model remain eligible, preserving the original chain policy.
     Requires all needed atoms present for both residues.
     """
     keys = sorted(set(his_ne2.keys()) & set(his_o.keys()) & set(his_n.keys()))
@@ -52,6 +52,8 @@ def find_his_pairs(his_ne2, his_o, his_n, cutoff_ne2=4.0, cutoff_hbond=4.0):
         for idx_j in range(idx_i + 1, len(keys)):
             i = keys[idx_i]
             j = keys[idx_j]
+            if i[0] != j[0]:
+                continue
 
             dist1 = euclidean_distance(his_ne2[i], his_ne2[j])
             if dist1 >= cutoff_ne2:
@@ -93,21 +95,17 @@ KEY_ATOMS = {
 RES_TYPES = list(KEY_ATOMS.keys())
 
 
-def _get_hx_resname(structure, chain_id: str, resseq: int, hx_offset: int) -> str:
+def _get_hx_resname(structure, model_id: int, chain_id: str, resseq: int, hx_offset: int) -> str:
     """
-    Notebook-like HX: residue at (resseq + hx_offset) in the same chain, if present.
+    Notebook-like HX: author number + offset, blank insertion code, in the
+    selected model and chain. This deliberately does not use sequence adjacency.
     Returns 'NA' if missing.
     """
     target = (" ", resseq + hx_offset, " ")
-    for model in structure:
-        for chain in model:
-            if chain.id != chain_id:
-                continue
-            try:
-                return chain[target].get_resname()
-            except Exception:
-                return "NA"
-    return "NA"
+    try:
+        return structure[model_id][chain_id][target].get_resname()
+    except KeyError:
+        return "NA"
 
 
 def find_closest_residues(structure, his_pairs, his_ne2, protein_length, pdb_path, hx_offset: int, details=None):
@@ -122,7 +120,11 @@ def find_closest_residues(structure, his_pairs, his_ne2, protein_length, pdb_pat
     rows = []
 
     for pair in his_pairs:
-        (chainA, resiA), (chainB, resiB) = pair
+        (model_id, chainA, residueA), (other_model_id, chainB, residueB) = pair
+        if model_id != other_model_id:
+            raise ValueError("A His pair cannot span different models")
+        model = structure[model_id]
+        resiA, resiB = residueA[1], residueB[1]
 
         midpoint = (
             (his_ne2[pair[0]][0] + his_ne2[pair[1]][0]) / 2,
@@ -135,25 +137,23 @@ def find_closest_residues(structure, his_pairs, his_ne2, protein_length, pdb_pat
         witnesses = {}
 
         # HX residue (optional use later; we still compute it)
-        hx_res = _get_hx_resname(structure, chainA, resiA, hx_offset=hx_offset)
+        hx_res = _get_hx_resname(structure, model_id, chainA, resiA, hx_offset=hx_offset)
 
-        for model in structure:
-            for chain in model:
-                for residue in chain:
-                    resseq = residue.get_id()[1]
-                    if (chain.id, resseq) in [pair[0], pair[1]]:
-                        continue
+        for chain in model:
+            for residue in chain:
+                if (model.id, chain.id, residue.id) in pair:
+                    continue
 
-                    resname = residue.get_resname()
-                    if resname not in KEY_ATOMS:
-                        continue
+                resname = residue.get_resname()
+                if resname not in KEY_ATOMS:
+                    continue
 
-                    for atom_name in KEY_ATOMS[resname]:
-                        if atom_name in residue:
-                            d = euclidean_distance(midpoint, residue[atom_name].get_coord())
-                            if d < closest[resname]:
-                                closest[resname] = d
-                                witnesses[resname] = residue[atom_name]
+                for atom_name in KEY_ATOMS[resname]:
+                    if atom_name in residue:
+                        d = euclidean_distance(midpoint, residue[atom_name].get_coord())
+                        if d < closest[resname]:
+                            closest[resname] = d
+                            witnesses[resname] = residue[atom_name]
 
         # convert inf -> blank for writing CSV, but keep numeric for filtering
         row = {
@@ -162,11 +162,19 @@ def find_closest_residues(structure, his_pairs, his_ne2, protein_length, pdb_pat
             "hisA": resiA,
             "chainB": chainB,
             "hisB": resiB,
-            "protein_length": protein_length,
+            # Preserve the legacy residue-count definition, but never count
+            # alternative models as extra residues of the selected model.
+            "protein_length": protein_length if len(structure) == 1 else len(list(model.get_residues())),
             "HXres": hx_res,
         }
         for res in RES_TYPES:
             row[f"closest_{res}"] = None if closest[res] == float("inf") else float(closest[res])
+
+        # Additive CSV columns retain all existing names and values while making
+        # sites with identical author numbers distinguishable.
+        row.update(model_id=model_id, model_number=model.serial_num,
+                   hisA_insertion_code=residueA[2].strip(), hisB_insertion_code=residueB[2].strip(),
+                   hisA_hetero_flag=residueA[0], hisB_hetero_flag=residueB[0])
 
         rows.append(row)
         if details is not None:
