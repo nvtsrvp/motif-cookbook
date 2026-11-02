@@ -281,6 +281,31 @@ summary_annotate_TIMESTAMP.json
 
 ---
 
+# 3) Visualize matches in PyMOL
+
+Run `hal-discovery mine --pdb-dir demo/demo_dataset --outdir results --detailed-results`
+
+The main outputs are:
+  • selected_sites_TIMESTAMP.csv: compact table of passing matches.
+  • selected_sites_TIMESTAMP.jsonl: full atom identities, measurements, scores, and explanations. (--detailed-results)
+  • selected_candidates_TIMESTAMP.jsonl: evaluated candidates, including failures.
+
+ Copy a `site_id` from the CSV, then export it with:
+
+```sh
+hal-discovery export-pymol --results results/site_matches_TIMESTAMP.jsonl --site-id SITE_ID --outdir results/my_selected_site
+cd results/my_selected_site
+pymol view.pml
+```
+Optional `--save-session` and `--png` produce outputs when PyMOL runs.
+The midpoint is labeled a computed geometric reference point, not a metal prediction.
+
+See [workflow and record format](docs/milestone-1.md) and
+[background, sources, and inspected implementation limitations](docs/background-and-sources.md).
+In particular, the existing `--ala-gly-cutoff` option is unused.
+
+---
+
 # Reproducibility
 
 - All runs are timestamped
@@ -349,26 +374,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
-## Explain existing matches in PyMOL (Milestone 1)
-
-Run `hal-discovery mine --pdb-dir demo/demo_dataset --outdir results --detailed-results`
-for optional explainable JSONL records alongside the unchanged CSV outputs.
-Select a recorded `site_id`, then export it with:
-
-```sh
-hal-discovery export-pymol --results results/site_matches_TIMESTAMP.jsonl --site-id SITE_ID --outdir site_bundle
-cd site_bundle
-pymol view.pml
-```
-
-The bundle includes the input structure, exact atom identities, criteria and measurements,
-and a reproducible PyMOL script. PyMOL is needed to view it, but is not needed to filter
-or export. Optional `--save-session` and `--png` produce outputs when PyMOL runs.
-The midpoint is labeled a computed geometric reference point, not a metal prediction.
-
-See [workflow and record format](docs/milestone-1.md) and
-[background, sources, and inspected implementation limitations](docs/background-and-sources.md).
-In particular, the existing `--ala-gly-cutoff` option is unused, and original summary
-JSON files do not record parameters; the new detailed records do. Existing filters
-remain unchanged. Copper/BURP filtering is deferred to Milestone 2.

@@ -1,7 +1,7 @@
 import argparse
 from pathlib import Path
 
-from .mine import run_mine
+from .mine import run_mine, SITE_FILTERS
 from .annotate import run_annotate
 
 
@@ -14,7 +14,7 @@ def main() -> None:
 
     # ---------------- mine ----------------
     p_mine = sub.add_parser("mine", help="Scan a folder of PDBs and identify 2-His sites and putative halogenases.")
-    p_mine.add_argument("--pdb-dir", required=True, help="Folder containing PDB files named like <UniProtAccession>.pdb")
+    p_mine.add_argument("--pdb-dir", required=True, help="Legacy PDB folder; with --filters, a PDB/mmCIF folder or single structure file")
     p_mine.add_argument("--outdir", required=True, help="Output folder for all generated results (will be created).")
 
     # geometry / rules
@@ -41,8 +41,20 @@ def main() -> None:
     p_mine.add_argument("--max-pdbs", type=int, default=None, help="Optional: process only first N PDBs (debug).")
     p_mine.add_argument("--detailed-results", action="store_true", help="Also write explainable site records and processing diagnostics; existing CSVs are unchanged.")
 
-    p_export = sub.add_parser("export-pymol", help="Export one recorded legacy filter match as a portable PyMOL bundle.")
-    p_export.add_argument("--results", required=True, help="site_matches_*.jsonl from mine --detailed-results")
+    # ---------------- composable site filters (explicit selection only) ----------------
+    p_mine.add_argument("--filters", nargs="+", choices=SITE_FILTERS,
+                        help="AND these filters at the same site. Omit to preserve the legacy workflow.")
+    p_mine.add_argument("--inward-score-min", type=float, default=None,
+                        help="Optional inclusive threshold on min(s1, s2) in [0,1]; both inward scores must still be >0")
+    p_mine.add_argument("--cu-n-min", type=float, default=1.7, help="Observed-Cu minimum Cu-N distance, inclusive (A)")
+    p_mine.add_argument("--cu-n-max", type=float, default=2.8, help="Observed-Cu maximum Cu-N distance, inclusive (A)")
+    p_mine.add_argument("--candidate-radius", type=float, default=4.5, help="Observed-Cu candidate donor radius (A)")
+    p_mine.add_argument("--disulfide-min", type=float, default=1.8, help="Provisional site-associated SG-SG minimum (A)")
+    p_mine.add_argument("--disulfide-max", type=float, default=2.3, help="Provisional site-associated SG-SG maximum (A)")
+    p_mine.add_argument("--contact-radius", type=float, default=6.0, help="Observed-site nearby-atom report radius (A)")
+
+    p_export = sub.add_parser("export-pymol", help="Export one recorded match as a portable PyMOL bundle.")
+    p_export.add_argument("--results", required=True, help="Detailed JSONL from mine")
     p_export.add_argument("--site-id", required=True, help="Exact site_id from the detailed results")
     p_export.add_argument("--outdir", required=True, help="New or empty bundle directory")
     p_export.add_argument("--structure", help="Override source path, with identical SHA-256 required")
@@ -70,7 +82,10 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "mine":
-        run_mine(args)
+        try:
+            run_mine(args)
+        except (ValueError, OSError) as exc:
+            parser.error(str(exc))
     elif args.command == "annotate":
         run_annotate(args)
     elif args.command == "export-pymol":

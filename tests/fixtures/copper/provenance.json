@@ -1,0 +1,38 @@
+{
+  "structures": [
+    {
+      "filename": "8SY3.cif",
+      "pdb_id": "8SY3",
+      "url": "https://files.rcsb.org/download/8SY3.cif",
+      "sha256": "537c701558f4c0b56cac8f274135e2516445ef947d1b0bfda30128007a54e720",
+      "resolution_angstrom": "3.20",
+      "revision_dates": [
+        "2024-02-14",
+        "2024-02-28",
+        "2024-04-10",
+        "2024-10-16"
+      ],
+      "downloaded_utc": "2026-10-19T01:00:30.433681+00:00"
+    },
+    {
+      "filename": "8SY2.cif",
+      "pdb_id": "8SY2",
+      "url": "https://files.rcsb.org/download/8SY2.cif",
+      "sha256": "f4e48fb49480a36b201eec13b13fa778efb5431f7bc6defc7b73a225598bec85",
+      "resolution_angstrom": "2.67",
+      "revision_dates": [
+        "2024-02-14",
+        "2024-02-28",
+        "2024-04-10",
+        "2024-10-16"
+      ],
+      "downloaded_utc": "2026-10-19T01:00:30.494431+00:00"
+    }
+  ],
+  "paper_doi": "10.1038/s41589-024-01552-1",
+  "reference_caveats": [
+    "Cu-His distances were restrained in refinement",
+    "Copper occupancy set to 50%",
+    "H165/H177 modeled copper in Figure 2g is not a deposited Cu atom"
+  ]
+}
